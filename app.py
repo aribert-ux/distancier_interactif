@@ -204,17 +204,17 @@ with col2:
     st.info(f"**📍 Point B**\n\n{point_b}")
 with col3:
     if km is not None:
-        st.success(f"**📏 Distance**\n\n{km:.1f} km")
+        st.success(f"**📏 Distance roulée**\n\n{km:.1f} km")
     else:
-        st.warning("**📏 Distance**\n\nNon disponible")
+        st.warning("**📏 Distance roulée**\n\nNon disponible")
 with col4:
     if minutes is not None:
         heures    = int(minutes) // 60
         mins      = int(minutes) % 60
         duree_str = f"{heures}h{mins:02d}" if heures > 0 else f"{int(mins)} min"
-        st.success(f"**⏱️ Durée**\n\n{duree_str} ({int(minutes)} min)")
+        st.success(f"**⏱️ Temps de route**\n\n{duree_str} ({int(minutes)} min)")
     else:
-        st.warning("**⏱️ Durée**\n\nNon disponible")
+        st.warning("**⏱️ Temps de route**\n\nNon disponible")
 
 st.markdown("---")
 
