@@ -4,342 +4,233 @@ import folium
 from streamlit_folium import st_folium
 
 # ─────────────────────────────────────────────
-# CONFIG PAGE
+# CONFIG
 # ─────────────────────────────────────────────
-st.set_page_config(
-    page_title="Distancier Auchan",
-    page_icon="🗺️",
-    layout="wide"
-)
+st.set_page_config(page_title="Distancier", layout="wide", page_icon="🗺️")
 
-st.title("🗺️ Distancier Auchan — Carte interactive")
-st.markdown(
-    "Sélectionnez deux points et visualisez le trajet sur la carte. "
-    "**Point A** et **Point B** peuvent être un entrepôt ou un magasin."
-)
+st.title("🗺️ Distancier — Visualisation des distances")
 
 # ─────────────────────────────────────────────
 # CHARGEMENT DES DONNÉES
 # ─────────────────────────────────────────────
 @st.cache_data
-def load_data():
+def charger_distancier():
     df = pd.read_csv("data/distancier.csv", sep=";")
     df.columns = df.columns.str.strip()
-    df["De"]      = df["De"].str.strip()
-    df["Vers"]    = df["Vers"].str.strip()
-    df["Km"]      = pd.to_numeric(df["Km"],      errors="coerce")
-    df["Minutes"] = pd.to_numeric(df["Minutes"], errors="coerce")
+    df["De"]   = df["De"].str.strip()
+    df["Vers"] = df["Vers"].str.strip()
     return df
 
 @st.cache_data
-def load_coordinates():
-    coords_df = pd.read_csv("data/coordonnees.csv", sep=";")
-    coords_df.columns = coords_df.columns.str.strip()
-    coords_df["tag"]       = coords_df["tag"].str.strip()
-    coords_df["latitude"]  = pd.to_numeric(coords_df["latitude"],  errors="coerce")
-    coords_df["longitude"] = pd.to_numeric(coords_df["longitude"], errors="coerce")
-    coords = dict(zip(coords_df["tag"], zip(coords_df["latitude"], coords_df["longitude"])))
-    return coords
+def charger_coordonnees():
+    df = pd.read_csv("data/coordonnees.csv", sep=";")
+    df.columns = df.columns.str.strip()
+    df["tag"]  = df["tag"].str.strip()
+    return df
 
-df     = load_data()
-coords = load_coordinates()
+df_dist  = charger_distancier()
+df_coords = charger_coordonnees()
 
-# ─────────────────────────────────────────────
-# LISTES DE LIEUX
-# ─────────────────────────────────────────────
-tous_lieux  = sorted(set(df["De"].unique()) | set(df["Vers"].unique()))
-entrepots   = sorted([l for l in tous_lieux if l.startswith("ENT")])
-magasins    = sorted([l for l in tous_lieux if not l.startswith("ENT")])
+# Dictionnaire tag → (lat, lon)
+coords_dict = {
+    row["tag"]: (row["latitude"], row["longitude"])
+    for _, row in df_coords.iterrows()
+}
 
-# Filtrer uniquement les lieux avec coordonnées connues
-entrepots_ok = [e for e in entrepots if e in coords]
-magasins_ok  = [m for m in magasins  if m in coords]
-tous_ok      = sorted([l for l in tous_lieux if l in coords])
+# Liste de tous les lieux disponibles
+tous_lieux = sorted(coords_dict.keys())
 
 # ─────────────────────────────────────────────
-# SIDEBAR — SÉLECTION
+# ÉTAT DE SESSION
 # ─────────────────────────────────────────────
-st.sidebar.header("📍 Sélection des points")
+if "point_a" not in st.session_state:
+    st.session_state.point_a = None
+if "point_b" not in st.session_state:
+    st.session_state.point_b = None
+if "mode_clic" not in st.session_state:
+    st.session_state.mode_clic = "A"  # prochain clic pose A ou B
 
-# Filtre type Point A
-type_a = st.sidebar.radio(
-    "Type Point A",
-    options=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"],
-    index=0,
-    key="type_a"
+# ─────────────────────────────────────────────
+# SIDEBAR — SÉLECTION PAR LISTE
+# ─────────────────────────────────────────────
+st.sidebar.header("🔍 Sélection par liste")
+
+st.sidebar.markdown("**Point A**")
+choix_a = st.sidebar.selectbox(
+    "Rechercher le point A",
+    options=["— Choisir —"] + tous_lieux,
+    key="select_a"
 )
 
-if type_a == "🏭 Entrepôt (ENT)":
-    liste_a = entrepots_ok
-elif type_a == "🏪 Magasin / Drive":
-    liste_a = magasins_ok
-else:
-    liste_a = tous_ok
-
-point_a = st.sidebar.selectbox(
-    "📍 Point A",
-    options=liste_a,
-    index=0,
-    key="point_a"
+st.sidebar.markdown("**Point B**")
+choix_b = st.sidebar.selectbox(
+    "Rechercher le point B",
+    options=["— Choisir —"] + tous_lieux,
+    key="select_b"
 )
 
-st.sidebar.markdown("---")
+if st.sidebar.button("✅ Valider la sélection par liste"):
+    if choix_a != "— Choisir —":
+        st.session_state.point_a = choix_a
+    if choix_b != "— Choisir —":
+        st.session_state.point_b = choix_b
 
-# Filtre type Point B
-type_b = st.sidebar.radio(
-    "Type Point B",
-    options=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"],
-    index=1,
-    key="type_b"
+st.sidebar.divider()
+
+# ─────────────────────────────────────────────
+# SIDEBAR — MODE CLIC CARTE
+# ─────────────────────────────────────────────
+st.sidebar.header("📍 Sélection par clic sur la carte")
+st.sidebar.markdown(
+    "Cliquez sur un lieu sur la carte pour le sélectionner comme **Point A** puis **Point B**."
 )
 
-if type_b == "🏭 Entrepôt (ENT)":
-    liste_b = entrepots_ok
-elif type_b == "🏪 Magasin / Drive":
-    liste_b = magasins_ok
-else:
-    liste_b = tous_ok
-
-point_b = st.sidebar.selectbox(
-    "📍 Point B",
-    options=liste_b,
-    index=0,
-    key="point_b"
+mode = st.sidebar.radio(
+    "Prochain clic sur la carte =",
+    options=["Point A", "Point B"],
+    index=0 if st.session_state.mode_clic == "A" else 1,
+    key="radio_mode"
 )
+st.session_state.mode_clic = "A" if mode == "Point A" else "B"
 
-# ─────────────────────────────────────────────
-# RECHERCHE DE LA DISTANCE
-# ─────────────────────────────────────────────
-def get_distance(df, origine, destination):
-    """Cherche la distance dans les deux sens."""
-    row = df[
-        ((df["De"] == origine)     & (df["Vers"] == destination)) |
-        ((df["De"] == destination) & (df["Vers"] == origine))
-    ]
-    if not row.empty:
-        return row.iloc[0]["Km"], row.iloc[0]["Minutes"]
-    return None, None
+st.sidebar.divider()
 
-km, minutes = get_distance(df, point_a, point_b)
-
-# ─────────────────────────────────────────────
-# MÉTRIQUES EN ÉVIDENCE
-# ─────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
-
+# Affichage des points sélectionnés
+st.sidebar.subheader("📌 Points sélectionnés")
+col1, col2 = st.sidebar.columns(2)
 with col1:
-    st.info(f"**📍 Point A**\n\n{point_a}")
-
+    st.markdown(f"**A :** {st.session_state.point_a or '—'}")
 with col2:
-    st.info(f"**📍 Point B**\n\n{point_b}")
+    st.markdown(f"**B :** {st.session_state.point_b or '—'}")
 
-with col3:
-    if km is not None:
-        st.success(f"**📏 Distance**\n\n{km:.1f} km")
-    else:
-        st.warning("**📏 Distance**\n\nNon disponible")
-
-with col4:
-    if minutes is not None:
-        heures    = int(minutes) // 60
-        mins      = int(minutes) % 60
-        duree_str = f"{heures}h{mins:02d}" if heures > 0 else f"{int(mins)} min"
-        st.success(f"**⏱️ Durée**\n\n{duree_str} ({int(minutes)} min)")
-    else:
-        st.warning("**⏱️ Durée**\n\nNon disponible")
-
-st.markdown("---")
+if st.sidebar.button("🔄 Réinitialiser"):
+    st.session_state.point_a = None
+    st.session_state.point_b = None
+    st.rerun()
 
 # ─────────────────────────────────────────────
 # CARTE FOLIUM
 # ─────────────────────────────────────────────
-lat_a, lon_a = coords.get(point_a, (None, None))
-lat_b, lon_b = coords.get(point_b, (None, None))
+centre_lat = 50.2
+centre_lon = 2.8
+zoom_depart = 8
 
-# Centre de la carte
-if lat_a and lat_b:
-    centre_lat = (lat_a + lat_b) / 2
-    centre_lon = (lon_a + lon_b) / 2
-elif lat_a:
-    centre_lat, centre_lon = lat_a, lon_a
-else:
-    centre_lat, centre_lon = 50.0, 2.5
+m = folium.Map(location=[centre_lat, centre_lon], zoom_start=zoom_depart, tiles="OpenStreetMap")
 
-m = folium.Map(
-    location=[centre_lat, centre_lon],
-    zoom_start=7,
-    tiles="CartoDB positron"
-)
+# Ajouter tous les lieux comme marqueurs cliquables (petits cercles)
+for tag, (lat, lon) in coords_dict.items():
+    # Couleur selon sélection
+    if tag == st.session_state.point_a and tag == st.session_state.point_b:
+        color = "purple"
+        radius = 8
+    elif tag == st.session_state.point_a:
+        color = "blue"
+        radius = 8
+    elif tag == st.session_state.point_b:
+        color = "red"
+        radius = 8
+    else:
+        color = "gray"
+        radius = 5
 
-# ── Tous les entrepôts (bleus) ─────────────────
-for ent in entrepots_ok:
-    lat, lon = coords[ent]
-    is_selected = (ent == point_a or ent == point_b)
     folium.CircleMarker(
         location=[lat, lon],
-        radius=8 if is_selected else 6,
-        color="#1565C0",
+        radius=radius,
+        color=color,
         fill=True,
-        fill_color="#1E88E5",
-        fill_opacity=1.0 if is_selected else 0.7,
-        tooltip=ent,
-        popup=folium.Popup(f"<b>🏭 {ent}</b>", max_width=250)
+        fill_color=color,
+        fill_opacity=0.8,
+        tooltip=tag,
+        popup=folium.Popup(f"<b>{tag}</b>", max_width=200),
     ).add_to(m)
 
-# ── Tous les magasins (verts) ──────────────────
-for mag in magasins_ok:
-    lat, lon = coords[mag]
-    is_selected = (mag == point_a or mag == point_b)
-    folium.CircleMarker(
-        location=[lat, lon],
-        radius=7 if is_selected else 5,
-        color="#2E7D32",
-        fill=True,
-        fill_color="#43A047",
-        fill_opacity=1.0 if is_selected else 0.6,
-        tooltip=mag,
-        popup=folium.Popup(f"<b>🏪 {mag}</b>", max_width=250)
-    ).add_to(m)
-
-# ── Marqueur Point A (sélectionné) ────────────
-if lat_a:
-    icon_a = folium.Icon(
-        color="blue"  if point_a.startswith("ENT") else "green",
-        icon="industry" if point_a.startswith("ENT") else "shopping-cart",
-        prefix="fa"
-    )
-    folium.Marker(
-        location=[lat_a, lon_a],
-        tooltip=f"📍 A — {point_a}",
-        popup=folium.Popup(f"<b>📍 POINT A</b><br>{point_a}", max_width=300),
-        icon=icon_a
-    ).add_to(m)
-
-# ── Marqueur Point B (sélectionné) ────────────
-if lat_b:
-    icon_b = folium.Icon(
-        color="blue"  if point_b.startswith("ENT") else "green",
-        icon="industry" if point_b.startswith("ENT") else "shopping-cart",
-        prefix="fa"
-    )
-    folium.Marker(
-        location=[lat_b, lon_b],
-        tooltip=f"📍 B — {point_b}",
-        popup=folium.Popup(f"<b>📍 POINT B</b><br>{point_b}", max_width=300),
-        icon=icon_b
-    ).add_to(m)
-
-# ── Trait entre A et B ─────────────────────────
-if lat_a and lat_b and point_a != point_b:
-    label = ""
-    if km is not None and minutes is not None:
-        heures    = int(minutes) // 60
-        mins      = int(minutes) % 60
-        duree_str = f"{heures}h{mins:02d}" if heures > 0 else f"{int(mins)} min"
-        label     = f"{km:.1f} km — {duree_str}"
-
-    folium.PolyLine(
-        locations=[[lat_a, lon_a], [lat_b, lon_b]],
-        color="#E53935",
-        weight=4,
-        opacity=0.9,
-        tooltip=label,
-        popup=folium.Popup(
-            f"<b>📏 {km:.1f} km</b><br>⏱️ {label}",
-            max_width=200
-        ) if km else None
-    ).add_to(m)
-
-    # ── Étiquette au milieu du trait ──────────
-    if km is not None:
-        mid_lat = (lat_a + lat_b) / 2
-        mid_lon = (lon_a + lon_b) / 2
-        folium.Marker(
-            location=[mid_lat, mid_lon],
-            icon=folium.DivIcon(
-                html=f"""
-                <div style="
-                    background-color: #E53935;
-                    color: white;
-                    padding: 5px 10px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    font-weight: bold;
-                    white-space: nowrap;
-                    box-shadow: 2px 2px 6px rgba(0,0,0,0.4);
-                ">
-                    📏 {km:.1f} km &nbsp;|&nbsp; ⏱️ {duree_str}
-                </div>
-                """,
-                icon_size=(220, 34),
-                icon_anchor=(110, 17)
-            )
+# Ligne entre A et B si les deux sont sélectionnés
+if st.session_state.point_a and st.session_state.point_b:
+    coord_a = coords_dict.get(st.session_state.point_a)
+    coord_b = coords_dict.get(st.session_state.point_b)
+    if coord_a and coord_b:
+        folium.PolyLine(
+            locations=[coord_a, coord_b],
+            color="orange",
+            weight=3,
+            opacity=0.8,
+            tooltip="Trajet A → B"
         ).add_to(m)
 
-# ── Légende ────────────────────────────────────
-legend_html = """
-<div style="
-    position: fixed;
-    bottom: 30px; left: 30px;
-    background-color: white;
-    border: 2px solid #ccc;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    z-index: 1000;
-    box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
-">
-    <b>Légende</b><br>
-    <span style="color:#1E88E5;">●</span> Entrepôt (ENT)<br>
-    <span style="color:#43A047;">●</span> Magasin / Drive<br>
-    <span style="color:#E53935;">—</span> Trajet sélectionné
-</div>
-"""
-m.get_root().html.add_child(folium.Element(legend_html))
-
-# ── Affichage de la carte ──────────────────────
-st_folium(m, width="100%", height=600, returned_objects=[])
-
 # ─────────────────────────────────────────────
-# TABLEAU DES DISTANCES DEPUIS LE POINT A
+# AFFICHAGE CARTE + GESTION DU CLIC
 # ─────────────────────────────────────────────
-st.markdown("---")
-st.subheader(f"📋 Toutes les distances depuis **{point_a}**")
-
-df_filtre = df[
-    (df["De"] == point_a) | (df["Vers"] == point_a)
-].copy()
-
-def normalise(row, ref):
-    dest = row["Vers"] if row["De"] == ref else row["De"]
-    return pd.Series({
-        "Destination": dest,
-        "Km":          row["Km"],
-        "Minutes":     row["Minutes"]
-    })
-
-df_display = df_filtre.apply(lambda r: normalise(r, point_a), axis=1)
-df_display = df_display[df_display["Destination"] != point_a]
-df_display = df_display.drop_duplicates(subset="Destination")
-df_display = df_display.sort_values("Km").reset_index(drop=True)
-df_display["Km"]      = df_display["Km"].round(1)
-df_display["Minutes"] = df_display["Minutes"].astype(int)
-
-def fmt_duree(m):
-    h = m // 60
-    mn = m % 60
-    return f"{h}h{mn:02d}" if h > 0 else f"{mn} min"
-
-df_display["Durée"] = df_display["Minutes"].apply(fmt_duree)
-df_display = df_display[["Destination", "Km", "Durée", "Minutes"]]
-
-def highlight_selected(row):
-    if row["Destination"] == point_b:
-        return ["background-color: #FFF176; font-weight: bold"] * len(row)
-    return [""] * len(row)
-
-st.dataframe(
-    df_display.style.apply(highlight_selected, axis=1),
-    use_container_width=True,
-    hide_index=True
+st.subheader("🗺️ Carte interactive")
+st.caption(
+    "💡 Cliquez sur un point de la carte pour le sélectionner. "
+    "Choisissez d'abord si le clic pose le **Point A** ou le **Point B** dans le menu à gauche."
 )
+
+carte_data = st_folium(m, width="100%", height=550, returned_objects=["last_object_clicked_tooltip"])
+
+# Traitement du clic sur la carte
+if carte_data and carte_data.get("last_object_clicked_tooltip"):
+    lieu_clique = carte_data["last_object_clicked_tooltip"]
+    if lieu_clique in coords_dict:
+        if st.session_state.mode_clic == "A":
+            if st.session_state.point_a != lieu_clique:
+                st.session_state.point_a = lieu_clique
+                st.rerun()
+        else:
+            if st.session_state.point_b != lieu_clique:
+                st.session_state.point_b = lieu_clique
+                st.rerun()
+
+# ─────────────────────────────────────────────
+# RÉSULTAT — DISTANCE ET TEMPS
+# ─────────────────────────────────────────────
+st.divider()
+st.subheader("📊 Résultat")
+
+point_a = st.session_state.point_a
+point_b = st.session_state.point_b
+
+if point_a and point_b:
+    if point_a == point_b:
+        st.info("ℹ️ Les deux points sont identiques. Distance = 0 km, Temps = 0 min.")
+    else:
+        # Chercher dans le distancier (A → B ou B → A)
+        ligne = df_dist[
+            ((df_dist["De"] == point_a) & (df_dist["Vers"] == point_b)) |
+            ((df_dist["De"] == point_b) & (df_dist["Vers"] == point_a))
+        ]
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("🔵 Point A", point_a)
+        with col2:
+            st.metric("🔴 Point B", point_b)
+        with col3:
+            if not ligne.empty:
+                km      = ligne.iloc[0]["Km"]
+                minutes = ligne.iloc[0]["Minutes"]
+                heures  = minutes // 60
+                mins    = minutes % 60
+                duree_str = f"{heures}h{mins:02d}" if heures > 0 else f"{mins} min"
+                st.metric("📏 Distance", f"{km} km")
+                st.metric("⏱️ Durée estimée", duree_str)
+            else:
+                st.warning("⚠️ Aucune donnée disponible pour ce trajet dans le distancier.")
+
+        # Tableau détaillé si plusieurs lignes (doublons A→B et B→A)
+        if not ligne.empty and len(ligne) > 1:
+            with st.expander("📋 Voir toutes les lignes correspondantes"):
+                st.dataframe(ligne, use_container_width=True)
+
+else:
+    st.info("👆 Sélectionnez un **Point A** et un **Point B** pour afficher la distance.")
+
+# ─────────────────────────────────────────────
+# TABLEAU DE TOUTES LES DISTANCES DEPUIS A
+# ─────────────────────────────────────────────
+if point_a:
+    st.divider()
+    with st.expander(f"📋 Toutes les distances depuis **{point_a}**"):
+        df_depuis_a = df_dist[df_dist["De"] == point_a].sort_values("Km")
+        st.dataframe(df_depuis_a, use_container_width=True, height=300)
