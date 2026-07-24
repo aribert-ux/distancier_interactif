@@ -58,100 +58,104 @@ tous_ok      = sorted([l for l in tous_lieux if l in coords])
 # ─────────────────────────────────────────────
 # SESSION STATE — initialisation
 # ─────────────────────────────────────────────
-if "point_a"         not in st.session_state:
-    st.session_state.point_a         = entrepots_ok[0] if entrepots_ok else tous_ok[0]
-if "point_b"         not in st.session_state:
-    st.session_state.point_b         = magasins_ok[0]  if magasins_ok  else tous_ok[0]
-if "mode_carte"      not in st.session_state:
-    st.session_state.mode_carte      = None   # None | "A" | "B"
-if "type_a"          not in st.session_state:
-    st.session_state.type_a          = "🏭 Entrepôt (ENT)"
-if "type_b"          not in st.session_state:
-    st.session_state.type_b          = "🏪 Magasin / Drive"
+if "point_a" not in st.session_state:
+    st.session_state.point_a = entrepots_ok[0] if entrepots_ok else tous_ok[0]
+if "point_b" not in st.session_state:
+    st.session_state.point_b = magasins_ok[0] if magasins_ok else tous_ok[0]
+if "mode_carte" not in st.session_state:
+    st.session_state.mode_carte = None
+if "type_a" not in st.session_state:
+    st.session_state.type_a = "🏭 Entrepôt (ENT)"
+if "type_b" not in st.session_state:
+    st.session_state.type_b = "🏪 Magasin / Drive"
+# Clé pour forcer le reset des selectbox sans conflit
+if "last_clicked" not in st.session_state:
+    st.session_state.last_clicked = None
 
 # ─────────────────────────────────────────────
-# SIDEBAR — SÉLECTION
+# SIDEBAR — POINT A
 # ─────────────────────────────────────────────
 st.sidebar.header("📍 Sélection des points")
-
-# ── POINT A ───────────────────────────────────
 st.sidebar.markdown("### Point A")
 
-type_a = st.sidebar.radio(
+type_a_new = st.sidebar.radio(
     "Type Point A",
     options=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"],
-    index=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"].index(st.session_state.type_a),
+    index=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"].index(
+        st.session_state.type_a
+    ),
     key="radio_type_a"
 )
-# Mise à jour du type si changé → reset mode carte
-if type_a != st.session_state.type_a:
-    st.session_state.type_a     = type_a
+if type_a_new != st.session_state.type_a:
+    st.session_state.type_a = type_a_new
     if st.session_state.mode_carte == "A":
         st.session_state.mode_carte = None
 
-if type_a == "🏭 Entrepôt (ENT)":
+# Liste filtrée pour A
+if st.session_state.type_a == "🏭 Entrepôt (ENT)":
     liste_a = entrepots_ok
-elif type_a == "🏪 Magasin / Drive":
+elif st.session_state.type_a == "🏪 Magasin / Drive":
     liste_a = magasins_ok
 else:
     liste_a = tous_ok
 
-# Sécurité : si point_a n'est plus dans la liste après changement de type
+# Sécurité : point_a doit être dans liste_a
 if st.session_state.point_a not in liste_a:
     st.session_state.point_a = liste_a[0] if liste_a else tous_ok[0]
 
-# Selectbox Point A (barre de recherche native Streamlit)
+# ── Selectbox A : on lit la valeur SANS la stocker via key= ──
+idx_a = liste_a.index(st.session_state.point_a) if st.session_state.point_a in liste_a else 0
 point_a_select = st.sidebar.selectbox(
     "📍 Point A — liste",
     options=liste_a,
-    index=liste_a.index(st.session_state.point_a) if st.session_state.point_a in liste_a else 0,
+    index=idx_a,
     key="select_a"
 )
-# Synchronisation selectbox → session_state (hors mode carte actif sur A)
-if st.session_state.mode_carte != "A":
-    if point_a_select != st.session_state.point_a:
-        st.session_state.point_a = point_a_select
-        st.rerun()
 
-# Bouton "Pointer sur la carte" pour A
-col_btn_a1, col_btn_a2 = st.sidebar.columns(2)
-with col_btn_a1:
-    if st.button(
-        "🗺️ Pointer A" if st.session_state.mode_carte != "A" else "✅ Mode actif",
-        key="btn_carte_a",
-        type="primary" if st.session_state.mode_carte == "A" else "secondary",
-        use_container_width=True
-    ):
-        st.session_state.mode_carte = "A" if st.session_state.mode_carte != "A" else None
+# Mise à jour depuis selectbox uniquement si pas en mode carte A
+if st.session_state.mode_carte != "A":
+    st.session_state.point_a = point_a_select
+
+# ── Boutons mode carte A ──
+col_a1, col_a2 = st.sidebar.columns(2)
+with col_a1:
+    label_btn_a = "✅ Mode actif" if st.session_state.mode_carte == "A" else "🗺️ Pointer A"
+    if st.button(label_btn_a, key="btn_carte_a", use_container_width=True):
+        st.session_state.mode_carte = None if st.session_state.mode_carte == "A" else "A"
         st.rerun()
-with col_btn_a2:
+with col_a2:
     if st.session_state.mode_carte == "A":
         if st.button("❌ Annuler", key="btn_cancel_a", use_container_width=True):
             st.session_state.mode_carte = None
             st.rerun()
 
 if st.session_state.mode_carte == "A":
-    st.sidebar.info(f"🖱️ Cliquez sur un point **{type_a}** sur la carte pour définir le **Point A**.")
+    st.sidebar.info("🖱️ Cliquez sur un point de la carte pour définir le **Point A**.")
 
 st.sidebar.markdown("---")
 
-# ── POINT B ───────────────────────────────────
+# ─────────────────────────────────────────────
+# SIDEBAR — POINT B
+# ─────────────────────────────────────────────
 st.sidebar.markdown("### Point B")
 
-type_b = st.sidebar.radio(
+type_b_new = st.sidebar.radio(
     "Type Point B",
     options=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"],
-    index=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"].index(st.session_state.type_b),
+    index=["🏭 Entrepôt (ENT)", "🏪 Magasin / Drive", "🔀 Tous"].index(
+        st.session_state.type_b
+    ),
     key="radio_type_b"
 )
-if type_b != st.session_state.type_b:
-    st.session_state.type_b     = type_b
+if type_b_new != st.session_state.type_b:
+    st.session_state.type_b = type_b_new
     if st.session_state.mode_carte == "B":
         st.session_state.mode_carte = None
 
-if type_b == "🏭 Entrepôt (ENT)":
+# Liste filtrée pour B
+if st.session_state.type_b == "🏭 Entrepôt (ENT)":
     liste_b = entrepots_ok
-elif type_b == "🏪 Magasin / Drive":
+elif st.session_state.type_b == "🏪 Magasin / Drive":
     liste_b = magasins_ok
 else:
     liste_b = tous_ok
@@ -159,56 +163,49 @@ else:
 if st.session_state.point_b not in liste_b:
     st.session_state.point_b = liste_b[0] if liste_b else tous_ok[0]
 
-# Selectbox Point B (barre de recherche native Streamlit)
+idx_b = liste_b.index(st.session_state.point_b) if st.session_state.point_b in liste_b else 0
 point_b_select = st.sidebar.selectbox(
     "📍 Point B — liste",
     options=liste_b,
-    index=liste_b.index(st.session_state.point_b) if st.session_state.point_b in liste_b else 0,
+    index=idx_b,
     key="select_b"
 )
-if st.session_state.mode_carte != "B":
-    if point_b_select != st.session_state.point_b:
-        st.session_state.point_b = point_b_select
-        st.rerun()
 
-# Bouton "Pointer sur la carte" pour B
-col_btn_b1, col_btn_b2 = st.sidebar.columns(2)
-with col_btn_b1:
-    if st.button(
-        "🗺️ Pointer B" if st.session_state.mode_carte != "B" else "✅ Mode actif",
-        key="btn_carte_b",
-        type="primary" if st.session_state.mode_carte == "B" else "secondary",
-        use_container_width=True
-    ):
-        st.session_state.mode_carte = "B" if st.session_state.mode_carte != "B" else None
+if st.session_state.mode_carte != "B":
+    st.session_state.point_b = point_b_select
+
+# ── Boutons mode carte B ──
+col_b1, col_b2 = st.sidebar.columns(2)
+with col_b1:
+    label_btn_b = "✅ Mode actif" if st.session_state.mode_carte == "B" else "🗺️ Pointer B"
+    if st.button(label_btn_b, key="btn_carte_b", use_container_width=True):
+        st.session_state.mode_carte = None if st.session_state.mode_carte == "B" else "B"
         st.rerun()
-with col_btn_b2:
+with col_b2:
     if st.session_state.mode_carte == "B":
         if st.button("❌ Annuler", key="btn_cancel_b", use_container_width=True):
             st.session_state.mode_carte = None
             st.rerun()
 
 if st.session_state.mode_carte == "B":
-    st.sidebar.info(f"🖱️ Cliquez sur un point **{type_b}** sur la carte pour définir le **Point B**.")
+    st.sidebar.info("🖱️ Cliquez sur un point de la carte pour définir le **Point B**.")
 
 # ─────────────────────────────────────────────
-# VARIABLES LOCALES (depuis session_state)
+# LECTURE DES POINTS (après toute la sidebar)
 # ─────────────────────────────────────────────
 point_a = st.session_state.point_a
 point_b = st.session_state.point_b
 
 # ─────────────────────────────────────────────
-# BANNIÈRE MODE CARTE ACTIF
+# BANNIÈRE MODE ACTIF
 # ─────────────────────────────────────────────
 if st.session_state.mode_carte == "A":
-    type_label = st.session_state.type_a
-    st.warning(f"🗺️ **Mode sélection carte actif — Point A** | Seuls les points *{type_label}* sont affichés. Cliquez sur un point pour le sélectionner.")
+    st.warning(f"🗺️ **Mode sélection carte — Point A** | Seuls les points *{st.session_state.type_a}* sont affichés. Cliquez sur un marqueur.")
 elif st.session_state.mode_carte == "B":
-    type_label = st.session_state.type_b
-    st.warning(f"🗺️ **Mode sélection carte actif — Point B** | Seuls les points *{type_label}* sont affichés. Cliquez sur un point pour le sélectionner.")
+    st.warning(f"🗺️ **Mode sélection carte — Point B** | Seuls les points *{st.session_state.type_b}* sont affichés. Cliquez sur un marqueur.")
 
 # ─────────────────────────────────────────────
-# RECHERCHE DE LA DISTANCE
+# DISTANCE
 # ─────────────────────────────────────────────
 def get_distance(df, origine, destination):
     row = df[
@@ -222,10 +219,9 @@ def get_distance(df, origine, destination):
 km, minutes = get_distance(df, point_a, point_b)
 
 # ─────────────────────────────────────────────
-# MÉTRIQUES EN ÉVIDENCE
+# MÉTRIQUES
 # ─────────────────────────────────────────────
 col1, col2, col3, col4 = st.columns(4)
-
 with col1:
     st.info(f"**📍 Point A**\n\n{point_a}")
 with col2:
@@ -266,96 +262,91 @@ m = folium.Map(
     tiles="CartoDB positron"
 )
 
-# ── Détermination des points à afficher selon le mode ──
+# ── Points visibles selon le mode ──
 mode_carte = st.session_state.mode_carte
 
 if mode_carte == "A":
-    # N'afficher que les points du type sélectionné pour A
     if st.session_state.type_a == "🏭 Entrepôt (ENT)":
-        points_visibles = entrepots_ok
+        afficher_entrepots = entrepots_ok
+        afficher_magasins  = []
     elif st.session_state.type_a == "🏪 Magasin / Drive":
-        points_visibles = magasins_ok
+        afficher_entrepots = []
+        afficher_magasins  = magasins_ok
     else:
-        points_visibles = tous_ok
-    afficher_entrepots = [e for e in entrepots_ok if e in points_visibles]
-    afficher_magasins  = [m_ for m_ in magasins_ok if m_ in points_visibles]
-
+        afficher_entrepots = entrepots_ok
+        afficher_magasins  = magasins_ok
 elif mode_carte == "B":
     if st.session_state.type_b == "🏭 Entrepôt (ENT)":
-        points_visibles = entrepots_ok
+        afficher_entrepots = entrepots_ok
+        afficher_magasins  = []
     elif st.session_state.type_b == "🏪 Magasin / Drive":
-        points_visibles = magasins_ok
+        afficher_entrepots = []
+        afficher_magasins  = magasins_ok
     else:
-        points_visibles = tous_ok
-    afficher_entrepots = [e for e in entrepots_ok if e in points_visibles]
-    afficher_magasins  = [m_ for m_ in magasins_ok if m_ in points_visibles]
-
+        afficher_entrepots = entrepots_ok
+        afficher_magasins  = magasins_ok
 else:
-    # Mode normal : tous les points
     afficher_entrepots = entrepots_ok
     afficher_magasins  = magasins_ok
 
-# ── Entrepôts (bleus) ──────────────────────────
+# ── Tracé des cercles ──
 for ent in afficher_entrepots:
     lat, lon = coords[ent]
     is_selected = (ent == point_a or ent == point_b)
     folium.CircleMarker(
         location=[lat, lon],
-        radius=8 if is_selected else 6,
+        radius=9 if is_selected else 6,
         color="#1565C0",
         fill=True,
         fill_color="#1E88E5",
         fill_opacity=1.0 if is_selected else 0.7,
-        tooltip=ent,
+        tooltip=ent,          # ← tooltip = nom exact du tag
         popup=folium.Popup(f"<b>🏭 {ent}</b>", max_width=250)
     ).add_to(m)
 
-# ── Magasins (verts) ───────────────────────────
 for mag in afficher_magasins:
     lat, lon = coords[mag]
     is_selected = (mag == point_a or mag == point_b)
     folium.CircleMarker(
         location=[lat, lon],
-        radius=7 if is_selected else 5,
+        radius=8 if is_selected else 5,
         color="#2E7D32",
         fill=True,
         fill_color="#43A047",
         fill_opacity=1.0 if is_selected else 0.6,
-        tooltip=mag,
+        tooltip=mag,          # ← tooltip = nom exact du tag
         popup=folium.Popup(f"<b>🏪 {mag}</b>", max_width=250)
     ).add_to(m)
 
-# ── Marqueur Point A ───────────────────────────
+# ── Marqueurs A et B ──
 if lat_a:
-    icon_a = folium.Icon(
-        color="blue"  if point_a.startswith("ENT") else "green",
-        icon="industry" if point_a.startswith("ENT") else "shopping-cart",
-        prefix="fa"
-    )
     folium.Marker(
         location=[lat_a, lon_a],
         tooltip=f"📍 A — {point_a}",
         popup=folium.Popup(f"<b>📍 POINT A</b><br>{point_a}", max_width=300),
-        icon=icon_a
+        icon=folium.Icon(
+            color="blue" if point_a.startswith("ENT") else "green",
+            icon="industry" if point_a.startswith("ENT") else "shopping-cart",
+            prefix="fa"
+        )
     ).add_to(m)
 
-# ── Marqueur Point B ───────────────────────────
 if lat_b and point_b != point_a:
-    icon_b = folium.Icon(
-        color="blue"  if point_b.startswith("ENT") else "green",
-        icon="industry" if point_b.startswith("ENT") else "shopping-cart",
-        prefix="fa"
-    )
     folium.Marker(
         location=[lat_b, lon_b],
         tooltip=f"📍 B — {point_b}",
         popup=folium.Popup(f"<b>📍 POINT B</b><br>{point_b}", max_width=300),
-        icon=icon_b
+        icon=folium.Icon(
+            color="blue" if point_b.startswith("ENT") else "green",
+            icon="industry" if point_b.startswith("ENT") else "shopping-cart",
+            prefix="fa"
+        )
     ).add_to(m)
 
-# ── Trait A → B ────────────────────────────────
+# ── Trait A → B ──
 if lat_a and lat_b and point_a != point_b:
-    label = ""
+    duree_str = ""
+    label     = ""
     if km is not None and minutes is not None:
         heures    = int(minutes) // 60
         mins      = int(minutes) % 60
@@ -367,11 +358,7 @@ if lat_a and lat_b and point_a != point_b:
         color="#E53935",
         weight=4,
         opacity=0.9,
-        tooltip=label,
-        popup=folium.Popup(
-            f"<b>📏 {km:.1f} km</b><br>⏱️ {label}",
-            max_width=200
-        ) if km else None
+        tooltip=label
     ).add_to(m)
 
     if km is not None:
@@ -382,14 +369,11 @@ if lat_a and lat_b and point_a != point_b:
             icon=folium.DivIcon(
                 html=f"""
                 <div style="
-                    background-color: #E53935;
-                    color: white;
-                    padding: 5px 10px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    font-weight: bold;
-                    white-space: nowrap;
-                    box-shadow: 2px 2px 6px rgba(0,0,0,0.4);
+                    background-color:#E53935;color:white;
+                    padding:5px 10px;border-radius:12px;
+                    font-size:12px;font-weight:bold;
+                    white-space:nowrap;
+                    box-shadow:2px 2px 6px rgba(0,0,0,0.4);
                 ">
                     📏 {km:.1f} km &nbsp;|&nbsp; ⏱️ {duree_str}
                 </div>
@@ -399,18 +383,14 @@ if lat_a and lat_b and point_a != point_b:
             )
         ).add_to(m)
 
-# ── Légende ────────────────────────────────────
+# ── Légende ──
 legend_html = """
 <div style="
-    position: fixed;
-    bottom: 30px; left: 30px;
-    background-color: white;
-    border: 2px solid #ccc;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    z-index: 1000;
-    box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+    position:fixed;bottom:30px;left:30px;
+    background-color:white;border:2px solid #ccc;
+    border-radius:8px;padding:10px 14px;
+    font-size:13px;z-index:1000;
+    box-shadow:2px 2px 6px rgba(0,0,0,0.2);
 ">
     <b>Légende</b><br>
     <span style="color:#1E88E5;">●</span> Entrepôt (ENT)<br>
@@ -420,49 +400,56 @@ legend_html = """
 """
 m.get_root().html.add_child(folium.Element(legend_html))
 
-# ── Affichage carte + gestion du clic ──────────
+# ─────────────────────────────────────────────
+# AFFICHAGE CARTE — retourne le clic
+# ─────────────────────────────────────────────
 carte_result = st_folium(
     m,
     width="100%",
     height=600,
-    returned_objects=["last_object_clicked_tooltip"]
+    returned_objects=["last_object_clicked_tooltip", "last_object_clicked"]
 )
 
-# ── Traitement du clic sur la carte ────────────
-if mode_carte in ("A", "B"):
-    clicked_tooltip = carte_result.get("last_object_clicked_tooltip") if carte_result else None
+# ─────────────────────────────────────────────
+# TRAITEMENT DU CLIC — APRÈS affichage carte
+# ─────────────────────────────────────────────
+if mode_carte in ("A", "B") and carte_result:
 
-    if clicked_tooltip and clicked_tooltip in coords:
-        # Vérifier que le lieu cliqué appartient bien à la liste filtrée
-        liste_autorisee = afficher_entrepots + afficher_magasins
+    # Récupération du tooltip cliqué (méthode principale)
+    clicked = carte_result.get("last_object_clicked_tooltip")
 
-        if clicked_tooltip in liste_autorisee:
-            if mode_carte == "A" and clicked_tooltip != st.session_state.point_a:
-                st.session_state.point_a   = clicked_tooltip
-                st.session_state.mode_carte = None   # désactiver le mode après sélection
-                st.rerun()
-            elif mode_carte == "B" and clicked_tooltip != st.session_state.point_b:
-                st.session_state.point_b   = clicked_tooltip
+    # Fallback : si tooltip vide, on ignore
+    if not clicked:
+        clicked = None
+
+    # Vérification que le tag cliqué existe dans les coordonnées
+    liste_autorisee = afficher_entrepots + afficher_magasins
+
+    if clicked and clicked in coords and clicked in liste_autorisee:
+        # Eviter de re-traiter le même clic (anti-boucle)
+        if clicked != st.session_state.last_clicked:
+            st.session_state.last_clicked = clicked
+
+            if mode_carte == "A":
+                st.session_state.point_a    = clicked
                 st.session_state.mode_carte = None
-                st.rerun()
+            else:
+                st.session_state.point_b    = clicked
+                st.session_state.mode_carte = None
+
+            st.rerun()
 
 # ─────────────────────────────────────────────
-# TABLEAU DES DISTANCES DEPUIS LE POINT A
+# TABLEAU DES DISTANCES DEPUIS POINT A
 # ─────────────────────────────────────────────
 st.markdown("---")
 st.subheader(f"📋 Toutes les distances depuis **{point_a}**")
 
-df_filtre = df[
-    (df["De"] == point_a) | (df["Vers"] == point_a)
-].copy()
+df_filtre = df[(df["De"] == point_a) | (df["Vers"] == point_a)].copy()
 
 def normalise(row, ref):
     dest = row["Vers"] if row["De"] == ref else row["De"]
-    return pd.Series({
-        "Destination": dest,
-        "Km":          row["Km"],
-        "Minutes":     row["Minutes"]
-    })
+    return pd.Series({"Destination": dest, "Km": row["Km"], "Minutes": row["Minutes"]})
 
 df_display = df_filtre.apply(lambda r: normalise(r, point_a), axis=1)
 df_display = df_display[df_display["Destination"] != point_a]
@@ -471,10 +458,10 @@ df_display = df_display.sort_values("Km").reset_index(drop=True)
 df_display["Km"]      = df_display["Km"].round(1)
 df_display["Minutes"] = df_display["Minutes"].astype(int)
 
-def fmt_duree(m):
-    h  = m // 60
-    mn = m % 60
-    return f"{h}h{mn:02d}" if h > 0 else f"{mn} min"
+def fmt_duree(mn):
+    h  = mn // 60
+    m_ = mn % 60
+    return f"{h}h{m_:02d}" if h > 0 else f"{m_} min"
 
 df_display["Durée"] = df_display["Minutes"].apply(fmt_duree)
 df_display = df_display[["Destination", "Km", "Durée", "Minutes"]]
